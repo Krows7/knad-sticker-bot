@@ -62,6 +62,7 @@ public class StickerRenderer {
 	private static final int MAX_TEXT_GAP = 20;
 	private static final int PROFILE_LETTERS_BASELINE = 16;
 	private static final int TIME_10_OFFSET = 14;
+	private static final int SCREEN_RESOLUTION = 120;
 	private static final String FONT_NAME = "Open Sans Medium";
 	
 	private Font NAME_FONT = new Font(FONT_NAME, Font.BOLD, 0).deriveFont(fitSize(FONT_NAME_SIZE));
@@ -274,7 +275,7 @@ public class StickerRenderer {
 	}
 	
 	private float fitSize(float pt) {
-		return pt / (72.0F / Toolkit.getDefaultToolkit().getScreenResolution());
+		return pt / (72.0F / SCREEN_RESOLUTION);
 	}
 	
 	public BufferedImage renderDefaultProfilePicture(String firstName, String lastName) {
