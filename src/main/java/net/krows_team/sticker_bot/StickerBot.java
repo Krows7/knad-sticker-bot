@@ -1,5 +1,6 @@
 package net.krows_team.sticker_bot;
 
+import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
@@ -7,8 +8,8 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import java.util.stream.Collectors;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
 import com.pengrad.telegrambot.TelegramBot;
 import com.pengrad.telegrambot.UpdatesListener;
 import com.pengrad.telegrambot.model.Message;
+import com.pengrad.telegrambot.model.Sticker;
 import com.pengrad.telegrambot.model.Update;
 import com.pengrad.telegrambot.model.request.ParseMode;
 import com.pengrad.telegrambot.request.AddStickerToSet;
@@ -30,6 +32,8 @@ import com.pengrad.telegrambot.request.GetStickerSet;
 import com.pengrad.telegrambot.request.SendMessage;
 import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.request.SendSticker;
+import com.pengrad.telegrambot.response.BaseResponse;
+import com.pengrad.telegrambot.response.GetStickerSetResponse;
 
 public class StickerBot {
 	
@@ -81,8 +85,8 @@ public class StickerBot {
 		bot.setUpdatesListener(upd -> {
 			for (Update u : upd) {
 				if (u.message() == null || u.message().text() == null) continue;
-				var msg = u.message();
-				var msgArr = msg.text().split(" ");
+				Message msg = u.message();
+				String[] msgArr = msg.text().split(" ");
 				if(checkForCommand(msgArr[0], BOT_COMMAND)) handleSticker(msg, msgArr);
 				else if(checkForCommand(msgArr[0], "help")) handleHelp(msg);
 				else if(contains(msgArr, "да")) {
@@ -104,13 +108,13 @@ public class StickerBot {
 			if (msg.replyToMessage() == null) sendError(msg.from().id(), "There's no reply message.");
 			else {
 				try {
-					var out = renderSticker(msg);
-					var stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
-					var emoji = args.length > 2 ? args[2] : "🤔";
+					byte[] out = renderSticker(msg);
+					GetStickerSetResponse stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
+					String emoji = args.length > 2 ? args[2] : "🤔";
 					if(stickerSet.stickerSet() == null) bot.execute(CreateNewStickerSet.pngSticker(KROWS_ID, STICKER_SET_NAME, STICKER_SET_TITLE, emoji, out));
 					else bot.execute(AddStickerToSet.pngSticker(KROWS_ID, STICKER_SET_NAME, emoji, out));
 					stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
-					var stickerArr = stickerSet.stickerSet().stickers();
+					Sticker[] stickerArr = stickerSet.stickerSet().stickers();
 					bot.execute(new SendSticker(msg.chat().id(), stickerArr[stickerArr.length - 1].fileId()));
 				} catch (Exception e) {
 					e.printStackTrace();
@@ -126,12 +130,12 @@ public class StickerBot {
 				}
 			}
 		} else if (args[1].equals("delete")) {
-			var stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
+			GetStickerSetResponse stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
 			if (args[2].equals("all")) {
-				for (var sticker : stickerSet.stickerSet().stickers()) bot.execute(new DeleteStickerFromSet(sticker.fileId()));
+				for (Sticker sticker : stickerSet.stickerSet().stickers()) bot.execute(new DeleteStickerFromSet(sticker.fileId()));
 			} else {
 				int index = Integer.valueOf(args[2]);
-				var response = bot.execute(new DeleteStickerFromSet(stickerSet.stickerSet().stickers()[index].fileId()));
+				BaseResponse response = bot.execute(new DeleteStickerFromSet(stickerSet.stickerSet().stickers()[index].fileId()));
 				if(response.isOk()) sendMessage(msg.chat().id(), "Sticker was deleted");
 			}
 		} else sendError(msg.chat().id(), "Unknown Command: " + args[1]);
@@ -149,9 +153,9 @@ public class StickerBot {
 	
 	public void handleHelp(Message msg) {
 		try {
-			var path = new File("src/main/resources/help.md").toPath();
+			Path path = new File("src/main/resources/help.md").toPath();
 			String s = Files.lines(path, StandardCharsets.UTF_8).collect(Collectors.joining(System.lineSeparator()));
-			var send = new SendMessage(msg.chat().id(), s);
+			SendMessage send = new SendMessage(msg.chat().id(), s);
 			send.parseMode(ParseMode.Markdown);
 			sendMessage(send);
 		} catch (IOException e) {
@@ -165,7 +169,7 @@ public class StickerBot {
 	}
 	
 	private byte[] renderSticker(Message msg) throws MalformedURLException, IOException {
-		var img = new StickerRenderer(bot).renderMessage(msg.replyToMessage());
+		BufferedImage img = new StickerRenderer(bot).renderMessage(msg.replyToMessage());
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ImageIO.write(img, "png", out);
 		return out.toByteArray();

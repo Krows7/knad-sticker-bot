@@ -25,7 +25,6 @@ import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Map;
 
 import javax.imageio.ImageIO;
 
@@ -80,13 +79,13 @@ public class StickerRenderer {
 	
 	public BufferedImage renderMessage(Message msg) throws MalformedURLException, IOException {
 		long timestamp = (msg.forwardDate() == null ? msg.date() : msg.forwardDate()) * 1000L;
-		var date = new Date(timestamp);
+		Date date = new Date(timestamp);
 		timeMore10 = date.getHours() > 9;
-		var name = msg.forwardFrom() != null ? msg.forwardFrom().username() : msg.forwardSenderName() != null ? msg.forwardSenderName() : msg.from().username();
+		String name = msg.forwardFrom() != null ? msg.forwardFrom().username() : msg.forwardSenderName() != null ? msg.forwardSenderName() : msg.from().username();
 		color = Colors.getFixed(name).createColor();
 		String msgText = msg.text();
 		BufferedImage img = new BufferedImage(MAX_WIDTH, MIN_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		var photo = getProfilePhoto(msg.from().id());
+		UserProfilePhotos photo = getProfilePhoto(msg.from().id());
 		BufferedImage profilePhoto = null;
 		if(msg.forwardSenderName() != null || msg.forwardFrom() != null) {
 			if(msg.forwardFrom() == null) profilePhoto = renderDefaultProfilePicture(msg.forwardSenderName(), null);
@@ -166,7 +165,7 @@ public class StickerRenderer {
 	
 	public void drawAvatar(BufferedImage avatar, Graphics2D g, int height) {
 		float diameter = AVATAR_DIAMETER;
-		var clip = new Ellipse2D.Float(0, height - diameter, diameter, diameter);
+		Ellipse2D.Float clip = new Ellipse2D.Float(0, height - diameter, diameter, diameter);
 		g.setPaint(new TexturePaint(resize(avatar, AVATAR_DIAMETER, AVATAR_DIAMETER), new Rectangle(0, height - AVATAR_DIAMETER, AVATAR_DIAMETER, AVATAR_DIAMETER)));
 		g.fill(clip);
 	}
@@ -221,11 +220,13 @@ public class StickerRenderer {
 	}
 	
 	public void renderText(Graphics2D g, String text, int width, int height) {
-        AttributedCharacterIterator paragraph = new AttributedString(text, Map.of(TextAttribute.FONT, TEXT_FONT)).getIterator();
+        AttributedString a = new AttributedString(text);
+        a.addAttribute(TextAttribute.FONT, TEXT_FONT);
+        AttributedCharacterIterator paragraph = a.getIterator();
         int paragraphStart = paragraph.getBeginIndex();
         int paragraphEnd = paragraph.getEndIndex();
         FontRenderContext frc = g.getFontRenderContext();
-        var lineMeasurer = new LineBreakMeasurer(paragraph, frc);
+        LineBreakMeasurer lineMeasurer = new LineBreakMeasurer(paragraph, frc);
         
         float breakWidth = width - MESSAGE_TEXT_X - MAX_TEXT_GAP;
         float y = MESSAGE_TEXT_BASELINE;
@@ -250,11 +251,13 @@ public class StickerRenderer {
 	}
 	
 	public float getHeight(Graphics2D g, String text, int width) {
-		AttributedCharacterIterator paragraph = new AttributedString(text, Map.of(TextAttribute.FONT, TEXT_FONT)).getIterator();
+		AttributedString a = new AttributedString(text);
+        a.addAttribute(TextAttribute.FONT, TEXT_FONT);
+        AttributedCharacterIterator paragraph = a.getIterator();
         int paragraphStart = paragraph.getBeginIndex();
         int paragraphEnd = paragraph.getEndIndex();
         FontRenderContext frc = g.getFontRenderContext();
-        var lineMeasurer = new LineBreakMeasurer(paragraph, frc);
+        LineBreakMeasurer lineMeasurer = new LineBreakMeasurer(paragraph, frc);
         
         float breakWidth = width - MESSAGE_TEXT_X - MAX_TEXT_GAP;
         lineMeasurer.setPosition(paragraphStart);
