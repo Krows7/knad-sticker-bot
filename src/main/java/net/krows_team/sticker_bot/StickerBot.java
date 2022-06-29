@@ -9,9 +9,9 @@ import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import javax.imageio.ImageIO;
@@ -42,6 +42,8 @@ public class StickerBot {
 	private TelegramBot bot;
 	
 	private Properties properties;
+	
+	public static final Predicate<String> WORD_PATTERN = Pattern.compile("\\b(\\w*(Д|д)(А|а)\\w*)\\b").asPredicate();
 	
 	public static final long KROWS_ID = 455071255;
 	public static final long BOT_ID = 5499360401L;
@@ -75,13 +77,13 @@ public class StickerBot {
 	}
 	
 	public void checkParameters() throws Exception {
-		List<String> missingParams = new ArrayList<>();
-		if(!properties.contains("token")) missingParams.add("token");
-		if(!missingParams.isEmpty()) throw new Exception("Missing the following parameters in .properties file: " + missingParams.toString());
+//		List<String> missingParams = new ArrayList<>();
+//		if(!properties.contains("token")) missingParams.add("token");
+//		if(!missingParams.isEmpty()) throw new Exception("Missing the following parameters in .properties file: " + missingParams.toString());
 	}
 	
 	public void start() {
-		bot = new TelegramBot(properties.getProperty("token"));
+		bot = new TelegramBot(System.getenv("bot_token"));
 		bot.setUpdatesListener(upd -> {
 			for (Update u : upd) {
 				if (u.message() == null || u.message().text() == null) continue;
@@ -89,7 +91,7 @@ public class StickerBot {
 				String[] msgArr = msg.text().split(" ");
 				if(checkForCommand(msgArr[0], BOT_COMMAND)) handleSticker(msg, msgArr);
 				else if(checkForCommand(msgArr[0], "help")) handleHelp(msg);
-				else if(contains(msgArr, "да")) {
+				else if(WORD_PATTERN.test(msg.text())) {
 					bot.execute(new SendPhoto(msg.chat().id(), read("src/main/resources/kirkorov.jpg")).replyToMessageId(msg.messageId()));
 				}
 			}

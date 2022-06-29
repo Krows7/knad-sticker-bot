@@ -297,5 +297,6 @@ public class StickerRenderer {
 	}
 }
 
+// TODO Fix Name Crop
 // TODO Fix Default Avatar Render
 // TODO Render Emojis

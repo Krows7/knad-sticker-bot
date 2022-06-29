@@ -1,1 +1,1 @@
-web: java $JAVA_OPTS -cp target/classes:target/dependency/* net.krows_team.sticker_bot.StickerBot
+web: java $JAVA_OPTS -cp target/classes:target/dependency/* net.krows_team.sticker_bot.StickerBot -Dserver.port=$PORT
