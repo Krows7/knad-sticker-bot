@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -34,6 +35,7 @@ import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.request.SendSticker;
 import com.pengrad.telegrambot.response.BaseResponse;
 import com.pengrad.telegrambot.response.GetStickerSetResponse;
+import com.sun.net.httpserver.HttpServer;
 
 public class StickerBot {
 	
@@ -61,7 +63,17 @@ public class StickerBot {
 	}
 	
 	public StickerBot() {
+		HerokuHacks();
 		initProperties();
+	}
+	
+	private void HerokuHacks() {
+		try {
+			HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", Integer.valueOf(System.getenv("PORT"))), 0);
+			server.start();
+		} catch (NumberFormatException | IOException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public void initProperties() {
