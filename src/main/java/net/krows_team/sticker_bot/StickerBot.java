@@ -90,13 +90,16 @@ public class StickerBot {
 					try {
 						URL url = new URL("https://knad-sticker-bot.herokuapp.com/");
 						HttpURLConnection con = (HttpURLConnection) url.openConnection();
+						BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+						in.close();
 				        con.disconnect();
 					} catch (IOException e) {
-						e.printStackTrace();
+						LOGGER.error("Ok: ", e);
 					}
 				}
 			};
-			timer.scheduleAtFixedRate(updateTask, 1000L, 1000L * 60 * 1);
+//			TODO Fix
+			timer.scheduleAtFixedRate(updateTask, 1000L, 1000L * 60 * 25);
 		} catch (NumberFormatException | IOException e) {
 			e.printStackTrace();
 		}
@@ -121,24 +124,35 @@ public class StickerBot {
 	}
 	
 	public void start(String[] args) {
-		bot = new TelegramBot(LOCAL ? args[1] : System.getenv("bot_token"));
-		bot.setUpdatesListener(upd -> {
-			for (Update u : upd) {
-				if (u.message() == null || u.message().text() == null) continue;
-				Message msg = u.message();
-				String[] msgArr = msg.text().split(" ");
-				if(checkForCommand(msgArr[0], BOT_COMMAND)) handleSticker(msg, msgArr);
-				else if(checkForCommand(msgArr[0], "help")) handleHelp(msg);
-				else if(WORD_PATTERN.test(msg.text())) {
-					bot.execute(new SendPhoto(msg.chat().id(), read("src/main/resources/kirkorov.jpg")).replyToMessageId(msg.messageId()));
+		try {
+			bot = new TelegramBot(LOCAL ? args[1] : System.getenv("bot_token"));
+			bot.setUpdatesListener(upd -> {
+				for (Update u : upd) {
+					if (u.message() == null || u.message().text() == null) continue;
+					Message msg = u.message();
+					String[] msgArr = msg.text().split(" ");
+					if(checkForCommand(msgArr[0], BOT_COMMAND)) handleSticker(msg, msgArr);
+					else if(checkForCommand(msgArr[0], "help")) handleHelp(msg);
+					else if(checkForCommand(msgArr[0], "halt")) handleHalt();
+					else if(WORD_PATTERN.test(msg.text())) {
+						bot.execute(new SendPhoto(msg.chat().id(), read("src/main/resources/kirkorov.jpg")).replyToMessageId(msg.messageId()));
+					}
 				}
-			}
-			return UpdatesListener.CONFIRMED_UPDATES_ALL;
-		});
+				return UpdatesListener.CONFIRMED_UPDATES_ALL;
+			});
+		} catch(Exception e) {
+			bot.shutdown();
+		} finally {
+			start(args);
+		}
 	}
 	
 	public boolean checkForCommand(String arg, String command) {
 		return arg.equals(BOT_PREFIX + command);
+	}
+	
+	public void handleHalt() {
+		System.exit(666);
 	}
 	
 	public void handleSticker(Message msg, String[] args) {
