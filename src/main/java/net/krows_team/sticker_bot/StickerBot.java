@@ -90,9 +90,6 @@ public class StickerBot {
 					try {
 						URL url = new URL("https://knad-sticker-bot.herokuapp.com/");
 						HttpURLConnection con = (HttpURLConnection) url.openConnection();
-						con.setRequestMethod("GET");
-						BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-				        in.close();
 				        con.disconnect();
 					} catch (IOException e) {
 						e.printStackTrace();
