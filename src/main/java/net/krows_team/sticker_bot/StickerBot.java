@@ -1,16 +1,24 @@
 package net.krows_team.sticker_bot;
 
 import java.awt.image.BufferedImage;
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.Timer;
+import java.util.TimerTask;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -45,11 +53,14 @@ public class StickerBot {
 	
 	private Properties properties;
 	
+	public static boolean LOCAL = false;
+	
 	public static final Predicate<String> WORD_PATTERN = Pattern.compile("\\b(\\w*(Д|д)(А|а)\\w*)\\b").asPredicate();
 	
 	public static final long KROWS_ID = 455071255;
 	public static final long BOT_ID = 5499360401L;
 	public static final long CHAT_ID = -1001594184195L;
+	
 	public static final String BOT_NICKNAME = "knad_sticker_bot";
 	public static final String STICKER_SET_NAME = "knad_sticker_pack_by_" + BOT_NICKNAME;
 	public static final String STICKER_SET_TITLE = "КНАД Стартер Пак";
@@ -58,12 +69,13 @@ public class StickerBot {
 	public static final String PROPERTIES_PATH = "src/main/resources/bot.properties";
 	
 	public static void main(String[] args) {
+		if(args.length > 0 && args[0].equals("local")) LOCAL = true;
 		StickerBot bot = new StickerBot();
-		bot.start();
+		bot.start(args);
 	}
 	
 	public StickerBot() {
-		HerokuHacks();
+		if(!LOCAL) HerokuHacks();
 		initProperties();
 	}
 	
@@ -71,6 +83,24 @@ public class StickerBot {
 		try {
 			HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", Integer.valueOf(System.getenv("PORT"))), 0);
 			server.start();
+			Timer timer = new Timer("Server update");
+			TimerTask updateTask = new TimerTask() {
+				@Override
+				public void run() {
+					try {
+						URL url = new URL("https://knad-sticker-bot.herokuapp.com/");
+						HttpURLConnection con = (HttpURLConnection) url.openConnection();
+						con.setRequestMethod("GET");
+						BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+				        String inputLine;
+				        while ((inputLine = in.readLine()) != null) System.out.println(inputLine);
+				        in.close();
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+			};
+			timer.scheduleAtFixedRate(updateTask, 1000L, 1000L * 60 * 1);
 		} catch (NumberFormatException | IOException e) {
 			e.printStackTrace();
 		}
@@ -82,20 +112,20 @@ public class StickerBot {
 			propFile.createNewFile();
 			properties = new Properties();
 			properties.load(new FileInputStream(propFile));
-			checkParameters();
+//			checkParameters();
 		} catch (Exception e) {
 			LOGGER.error("An error occured while reading properties", e);
 		}
 	}
 	
 	public void checkParameters() throws Exception {
-//		List<String> missingParams = new ArrayList<>();
-//		if(!properties.contains("token")) missingParams.add("token");
-//		if(!missingParams.isEmpty()) throw new Exception("Missing the following parameters in .properties file: " + missingParams.toString());
+		List<String> missingParams = new ArrayList<>();
+		if(!properties.contains("token")) missingParams.add("token");
+		if(!missingParams.isEmpty()) throw new Exception("Missing the following parameters in .properties file: " + missingParams.toString());
 	}
 	
-	public void start() {
-		bot = new TelegramBot(System.getenv("bot_token"));
+	public void start(String[] args) {
+		bot = new TelegramBot(LOCAL ? args[1] : System.getenv("bot_token"));
 		bot.setUpdatesListener(upd -> {
 			for (Update u : upd) {
 				if (u.message() == null || u.message().text() == null) continue;
@@ -159,7 +189,6 @@ public class StickerBot {
 		try {
 			return Files.readAllBytes(new File(path).toPath());
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		return null;

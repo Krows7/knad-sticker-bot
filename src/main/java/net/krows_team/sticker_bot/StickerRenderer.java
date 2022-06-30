@@ -24,7 +24,9 @@ import java.net.URL;
 import java.text.AttributedCharacterIterator;
 import java.text.AttributedString;
 import java.text.SimpleDateFormat;
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
 
 import javax.imageio.ImageIO;
 
@@ -34,6 +36,11 @@ import com.pengrad.telegrambot.model.UserProfilePhotos;
 import com.pengrad.telegrambot.request.GetFile;
 import com.pengrad.telegrambot.request.GetUserProfilePhotos;
 import com.pengrad.telegrambot.response.GetFileResponse;
+import com.vdurmont.emoji.Emoji;
+import com.vdurmont.emoji.EmojiLoader;
+import com.vdurmont.emoji.EmojiManager;
+import com.vdurmont.emoji.EmojiParser;
+import com.vdurmont.emoji.EmojiTrie;
 
 public class StickerRenderer {
 	
@@ -63,6 +70,9 @@ public class StickerRenderer {
 	private static final int PROFILE_LETTERS_BASELINE = 16;
 	private static final int TIME_10_OFFSET = 14;
 	private static final int SCREEN_RESOLUTION = 120;
+	private static final int EMOJI_SIZE = 58;
+	private static final int ATLAS_EMOJI_SIZE = 72;
+	private static final String EMOJI_REPLACEMENT = ":<EMOJI_REPLACEMENT>:";
 	private static final String FONT_NAME = "Open Sans Medium";
 	
 	private Font NAME_FONT = new Font(FONT_NAME, Font.BOLD, 0).deriveFont(fitSize(FONT_NAME_SIZE));
@@ -79,6 +89,7 @@ public class StickerRenderer {
 	}
 	
 	public BufferedImage renderMessage(Message msg) throws MalformedURLException, IOException {
+		System.out.println(msg.text());
 		long timestamp = (msg.forwardDate() == null ? msg.date() : msg.forwardDate()) * 1000L;
 		Date date = new Date(timestamp);
 		timeMore10 = date.getHours() > 9;
@@ -104,7 +115,9 @@ public class StickerRenderer {
 		if(timeAdjust) trueHeight += TIME_BASELINE / 2;
 		else trueHeight += TIME_HEIGHT + TIME_BASELINE;
 		MIN_HEIGHT = (int) trueHeight;
-		if(timeAdjust && lineCount == 1) MAX_WIDTH = (int) Math.min(MAX_WIDTH, (MESSAGE_TEXT_X + lastLineWidth + MAX_TEXT_TIME_GAP + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0)));
+		int nameWidth = getNameWidth(img, g, name);
+		float mx = Math.max(MESSAGE_TEXT_X + nameWidth + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0) + MESSAGE_TEXT_X - MESSAGE_BLOCK_X, (MESSAGE_TEXT_X + lastLineWidth + MAX_TEXT_TIME_GAP + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0)));
+		if(timeAdjust && lineCount == 1) MAX_WIDTH = (int) Math.min(MAX_WIDTH, mx);
 		img = new BufferedImage(MAX_WIDTH, (int) MIN_HEIGHT, BufferedImage.TYPE_INT_ARGB);
 		g = img.createGraphics();
 		if(DEBUG) {
@@ -126,6 +139,55 @@ public class StickerRenderer {
 		renderTime(g, timestamp, MAX_WIDTH, MIN_HEIGHT);
 		if (img.getWidth() != 512) return resize(img, 512, (int) (img.getHeight() * (512.0F / img.getWidth())));
 		return img;
+	}
+	
+//	TODO
+	public BufferedImage getEmoji(String emoji) {
+		return loadEmoji(getEmojiAtlas(emoji), getEmojiX(emoji), getEmojiY(emoji));
+	}
+	
+//	TODO
+	public int getEmojiX(String emoji) {
+		return - 1;
+	}
+	
+//	TODO
+	public int getEmojiY(String emoji) {
+		return - 1;
+	}
+	
+//	TODO
+	public int getEmojiAtlas(String emoji) {
+		return - 1;
+	}
+	
+	public BufferedImage loadEmoji(int atlas, int x, int y) {
+		try {
+			return ImageIO.read(new File("src/main/resources/emoji/emoji_" + atlas + ".png")).getSubimage(x * ATLAS_EMOJI_SIZE, y * ATLAS_EMOJI_SIZE, ATLAS_EMOJI_SIZE, ATLAS_EMOJI_SIZE);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
+	
+//	TODO
+	public int getEmojiIndex(String emoji) {
+		return 0;
+	}
+	
+	public int getXHeight(Graphics2D g) {
+		return g.getFontMetrics().getStringBounds("x", g).getBounds().height;
+	}
+	
+	public int getNameWidth(BufferedImage img, Graphics2D g, String name) {
+		return g.getFontMetrics().stringWidth(name);
+	}
+	
+	public void renderTextExtended(BufferedImage img, Graphics2D g, String text) {
+		String rawText = EmojiParser.removeAllEmojis(text);
+		List<String> emojies = EmojiParser.extractEmojis(text);
+		String markedText = EmojiParser.replaceAllEmojis(text, EMOJI_REPLACEMENT);
+		
 	}
 	
 	private void initDebug(BufferedImage img, Graphics2D g) throws IOException {
@@ -297,6 +359,5 @@ public class StickerRenderer {
 	}
 }
 
-// TODO Fix Name Crop
 // TODO Fix Default Avatar Render
 // TODO Render Emojis
