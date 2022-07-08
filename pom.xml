@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.krows_team</groupId>
   <artifactId>sticker-bot</artifactId>
-  <version>0.0.1</version>
+  <version>0.1.0</version>
   <name>Telegram Sticker Bot</name>
   <dependencies>
   	<dependency>
@@ -20,7 +20,15 @@
 	  <artifactId>emoji-java</artifactId>
 	  <version>5.1.1</version>
 	</dependency>
+	<dependency>
+	    <groupId>org.slf4j</groupId>
+	    <artifactId>slf4j-simple</artifactId>
+	    <version>1.7.36</version>
+	</dependency>
   </dependencies>
+  <properties>
+  	<jvm.options>--add-opens=java.base/java.lang.reflect=ALL-UNNAMED</jvm.options>
+  </properties>
   <build>
   	<plugins>
   		<plugin>
@@ -28,6 +36,9 @@
 		    <artifactId>maven-compiler-plugin</artifactId>
 		    <version>3.8.0</version>
 		    <configuration>
+		    	<compilerArgs>
+		    		<compilerArg>${jvm.options}</compilerArg>
+		    	</compilerArgs>
 	       		<source>1.8</source>
 		        <target>1.8</target>
 		        <verbose>true</verbose>

@@ -1,58 +1,46 @@
 package net.krows_team.sticker_bot;
 
 import java.awt.Color;
-import java.awt.Desktop;
 import java.awt.Font;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.Image;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
 import java.awt.TexturePaint;
 import java.awt.Toolkit;
 import java.awt.font.FontRenderContext;
-import java.awt.font.LineBreakMeasurer;
-import java.awt.font.TextAttribute;
-import java.awt.font.TextLayout;
+import java.awt.font.GlyphVector;
 import java.awt.geom.Area;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.text.AttributedCharacterIterator;
-import java.text.AttributedString;
 import java.text.SimpleDateFormat;
-import java.util.Collection;
+import java.util.Calendar;
 import java.util.Date;
-import java.util.List;
 
-import javax.imageio.ImageIO;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import com.pengrad.telegrambot.TelegramBot;
-import com.pengrad.telegrambot.model.Message;
-import com.pengrad.telegrambot.model.UserProfilePhotos;
-import com.pengrad.telegrambot.request.GetFile;
-import com.pengrad.telegrambot.request.GetUserProfilePhotos;
-import com.pengrad.telegrambot.response.GetFileResponse;
-import com.vdurmont.emoji.Emoji;
-import com.vdurmont.emoji.EmojiLoader;
-import com.vdurmont.emoji.EmojiManager;
-import com.vdurmont.emoji.EmojiParser;
-import com.vdurmont.emoji.EmojiTrie;
+import net.krows_team.sticker_bot.text.TextRenderer;
 
 public class StickerRenderer {
 	
-	private TelegramBot bot;
+	private static final Logger LOGGER = LoggerFactory.getLogger(StickerRenderer.class);
 	
-	private static boolean DEBUG = false;
-	
+	private static final int MAX_WIDTH = 512;
 	private static final int BACKGROUND_COLOR = 0x1c2028;
 	private static final int TIME_COLOR = 0x787D87;
-	private static int MIN_HEIGHT = 103;
-	private static int MAX_WIDTH = 512;
 	private static final int AVATAR_DIAMETER = 53;
+	private static final int TIME_HEIGHT = 15;
+	private static final int TIME_BASELINE = 12;
+	private static final int TIME_X = 59;
+	private static final int MAX_TEXT_TIME_GAP = 13;
+	private static final int MAX_TEXT_GAP = 20;
+	private static final int PROFILE_LETTERS_BASELINE = 16;
+	private static final int TIME_10_OFFSET = 14;
+	private static final int DEFAULT_SCREEN_RESOLUTION = 120;
+	private static final int SCREEN_RESOLUTION = getScreenResolution();
 	private static final float FONT_SIZE = 12.25F;
 	private static final float FONT_NAME_SIZE = 12F;
 	private static final float FONT_PROFILE_SIZE = 17F;
@@ -62,155 +50,94 @@ public class StickerRenderer {
 	private static final float MESSAGE_TEXT_X = MESSAGE_BLOCK_X + 21;
 	private static final float MESSAGE_NAME_BASELINE = 35;
 	private static final float MESSAGE_TEXT_BASELINE = 63;
-	private static final int TIME_HEIGHT = 15;
-	private static final int TIME_BASELINE = 12;
-	private static final int TIME_X = 59;
-	private static final int MAX_TEXT_TIME_GAP = 13;
-	private static final int MAX_TEXT_GAP = 20;
-	private static final int PROFILE_LETTERS_BASELINE = 16;
-	private static final int TIME_10_OFFSET = 14;
-	private static final int SCREEN_RESOLUTION = 120;
-	private static final int EMOJI_SIZE = 58;
-	private static final int ATLAS_EMOJI_SIZE = 72;
-	private static final String EMOJI_REPLACEMENT = ":<EMOJI_REPLACEMENT>:";
+	
 	private static final String FONT_NAME = "Open Sans Medium";
 	
-	private Font NAME_FONT = new Font(FONT_NAME, Font.BOLD, 0).deriveFont(fitSize(FONT_NAME_SIZE));
-	private Font TEXT_FONT = new Font(FONT_NAME, Font.PLAIN, 0).deriveFont(fitSize(FONT_SIZE));
+	private static Font NAME_FONT = new Font(FONT_NAME, Font.BOLD, 0).deriveFont(fitSize(FONT_NAME_SIZE));
+	public static Font TEXT_FONT = new Font(FONT_NAME, Font.PLAIN, 0).deriveFont(fitSize(FONT_SIZE));
+
+	private StickerData data;
 	
-	private Color color;
+	private BufferedImage img;
+	
+	private Graphics2D g;
+	
 	private boolean timeAdjust = true;
 	private boolean timeMore10 = false;
-	private int lastLineWidth = 0;
-	private int lineCount = 0;
 	
-	public StickerRenderer(TelegramBot bot) {
-		this.bot = bot;
+	private int height = 1;
+	private int width = MAX_WIDTH;
+	
+	public StickerRenderer(StickerData data) {
+		this.data = data;
 	}
 	
-	public BufferedImage renderMessage(Message msg) throws MalformedURLException, IOException {
-		System.out.println(msg.text());
-		long timestamp = (msg.forwardDate() == null ? msg.date() : msg.forwardDate()) * 1000L;
-		Date date = new Date(timestamp);
-		timeMore10 = date.getHours() > 9;
-		String name = msg.forwardFrom() != null ? msg.forwardFrom().username() : msg.forwardSenderName() != null ? msg.forwardSenderName() : msg.from().username();
-		color = Colors.getFixed(name).createColor();
-		String msgText = msg.text();
-		BufferedImage img = new BufferedImage(MAX_WIDTH, MIN_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		UserProfilePhotos photo = getProfilePhoto(msg.from().id());
-		BufferedImage profilePhoto = null;
-		if(msg.forwardSenderName() != null || msg.forwardFrom() != null) {
-			if(msg.forwardFrom() == null) profilePhoto = renderDefaultProfilePicture(msg.forwardSenderName(), null);
-			else {
-				photo = getProfilePhoto(msg.forwardFrom().id());
-				if(photo.totalCount() == 0) profilePhoto = renderDefaultProfilePicture(msg.forwardFrom().firstName(), msg.forwardFrom().lastName());
-				else profilePhoto = ImageIO.read(new URL(getURLById(photo.photos()[0][0].fileId())));
-			}
-		} else if(photo.totalCount() == 0) profilePhoto = renderDefaultProfilePicture(msg.from().firstName(), msg.from().lastName());
-		else profilePhoto = ImageIO.read(new URL(getURLById(photo.photos()[0][0].fileId())));
-		Graphics2D g = img.createGraphics();
-		initGraphics(g);
-		float trueHeight = getHeight(g, msgText, MAX_WIDTH);
-		trueHeight += MESSAGE_NAME_BASELINE + 14;
-		if(timeAdjust) trueHeight += TIME_BASELINE / 2;
-		else trueHeight += TIME_HEIGHT + TIME_BASELINE;
-		MIN_HEIGHT = (int) trueHeight;
-		int nameWidth = getNameWidth(img, g, name);
-		float mx = Math.max(MESSAGE_TEXT_X + nameWidth + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0) + MESSAGE_TEXT_X - MESSAGE_BLOCK_X, (MESSAGE_TEXT_X + lastLineWidth + MAX_TEXT_TIME_GAP + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0)));
-		if(timeAdjust && lineCount == 1) MAX_WIDTH = (int) Math.min(MAX_WIDTH, mx);
-		img = new BufferedImage(MAX_WIDTH, (int) MIN_HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		g = img.createGraphics();
-		if(DEBUG) {
-			initDebug(img, g);
-			return null;
-		}
-		initGraphics(g);
-		fillTransparent(g, MAX_WIDTH, MIN_HEIGHT);
-		drawAvatar(profilePhoto, g, MIN_HEIGHT);
-		drawMessageBlock(g, MAX_WIDTH, MIN_HEIGHT);
-		String from = null;
-		if(msg.forwardFrom() != null) {
-			from = msg.forwardFrom().firstName() + (msg.forwardFrom().lastName() == null ? "" : " " + msg.forwardFrom().lastName());
-		} else if(msg.forwardSenderName() != null) { 
-			from = msg.forwardSenderName();
-		} else from = msg.from().firstName() + (msg.from().lastName() == null ? "" : " " + msg.from().lastName());
-		renderName(g, from);
-		renderText(g, msg.text());
-		renderTime(g, timestamp, MAX_WIDTH, MIN_HEIGHT);
-		if (img.getWidth() != 512) return resize(img, 512, (int) (img.getHeight() * (512.0F / img.getWidth())));
+	private void init() {
+		Calendar calendar = Calendar.getInstance();
+		calendar.setTime(new Date(data.timestamp));
+		
+		timeMore10 = calendar.get(Calendar.HOUR_OF_DAY) > 9;
+	}
+	
+	public BufferedImage fitImage() {
+		if (img.getWidth() != 512) return resizeImage(img, 512, (int) (img.getHeight() * (512.0F / img.getWidth())));
 		return img;
 	}
 	
-//	TODO
-	public BufferedImage getEmoji(String emoji) {
-		return loadEmoji(getEmojiAtlas(emoji), getEmojiX(emoji), getEmojiY(emoji));
+	private void fixSize(String text) {
+		LOGGER.debug("fixSize1()");
+		float[] trueSize = TextRenderer.getBounds(g, text, (int) (MAX_WIDTH - MESSAGE_TEXT_X - MAX_TEXT_GAP));
+		LOGGER.debug(String.format("Message Height: %s", trueSize[1]));
+		trueSize[1] += MESSAGE_NAME_BASELINE + 14;
+		if(TIME_X + MAX_TEXT_TIME_GAP + trueSize[0] > MAX_WIDTH - MESSAGE_TEXT_X - (timeMore10 ? TIME_10_OFFSET : 0)) timeAdjust = false;
+		LOGGER.debug(String.format("Time Adjust: %s", timeAdjust));
+		LOGGER.debug(String.format("Last line width: %s", trueSize[0]));
+		if(timeAdjust) trueSize[1] += TIME_BASELINE / 2;
+		else trueSize[1] += TIME_HEIGHT + TIME_BASELINE;
+		height = (int) trueSize[1];
+		
+		int nameWidth = getNameWidth(img, g, data.renderName);
+		float mx = Math.max(MESSAGE_TEXT_X + nameWidth + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0) + MESSAGE_TEXT_X - MESSAGE_BLOCK_X, (MESSAGE_TEXT_X + trueSize[0] + MAX_TEXT_TIME_GAP + TIME_X + (timeMore10 ? TIME_10_OFFSET : 0)));
+		if(timeAdjust && (int) trueSize[2] == 1) width = (int) Math.min(MAX_WIDTH, mx);
 	}
 	
-//	TODO
-	public int getEmojiX(String emoji) {
-		return - 1;
+	private BufferedImage createImage() {
+		return (img = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB));
 	}
 	
-//	TODO
-	public int getEmojiY(String emoji) {
-		return - 1;
+	private void createRender() {
+		createImage();
+		initGraphics(img);
 	}
 	
-//	TODO
-	public int getEmojiAtlas(String emoji) {
-		return - 1;
-	}
-	
-	public BufferedImage loadEmoji(int atlas, int x, int y) {
-		try {
-			return ImageIO.read(new File("src/main/resources/emoji/emoji_" + atlas + ".png")).getSubimage(x * ATLAS_EMOJI_SIZE, y * ATLAS_EMOJI_SIZE, ATLAS_EMOJI_SIZE, ATLAS_EMOJI_SIZE);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return null;
-	}
-	
-//	TODO
-	public int getEmojiIndex(String emoji) {
-		return 0;
-	}
-	
-	public int getXHeight(Graphics2D g) {
-		return g.getFontMetrics().getStringBounds("x", g).getBounds().height;
+	public BufferedImage renderMessage() {
+		init();
+		createRender();
+		fixSize(data.text);
+		createRender();
+		fillTransparent(g, width, height);
+		drawAvatar(data.avatar.orElse(this::renderDefaultProfilePicture), g, height);
+		drawMessageBlock(g, width, height);
+		renderName(g, data.renderName);
+		renderText(g, data.text);
+		renderTime(g, data.timestamp, width, height);
+		// TODO Fix if Height > 512
+		return fitImage();
 	}
 	
 	public int getNameWidth(BufferedImage img, Graphics2D g, String name) {
+		g.setFont(NAME_FONT);
 		return g.getFontMetrics().stringWidth(name);
 	}
 	
-	public void renderTextExtended(BufferedImage img, Graphics2D g, String text) {
-		String rawText = EmojiParser.removeAllEmojis(text);
-		List<String> emojies = EmojiParser.extractEmojis(text);
-		String markedText = EmojiParser.replaceAllEmojis(text, EMOJI_REPLACEMENT);
-		
+	public void renderText(Graphics2D g, String text) {
+		g.setColor(new Color(0xEBEBEB));
+		g.setFont(TEXT_FONT);
+		TextRenderer.renderText(g, text, (int) MESSAGE_TEXT_X, (int) MESSAGE_TEXT_BASELINE, (int) (width - MESSAGE_TEXT_X - MAX_TEXT_GAP));
 	}
 	
-	private void initDebug(BufferedImage img, Graphics2D g) throws IOException {
-		String msgName = "Ekaterina";
-//		String msgName = "Danil Fedorovykh";
-		String msgText = "Если бы у меня были права, я бы банила, но я женщина, у женщин нет прав даже в чате кнада";
-//		String msgText = "Лох";
-//		String msgText = "что мне делать с этими результатами?";
-		color = Colors.random().createColor();
-		BufferedImage profilePhoto = null;
-		initGraphics(g);
-		fillTransparent(g, MAX_WIDTH, MIN_HEIGHT);
-		drawAvatar(profilePhoto, g, MIN_HEIGHT);
-		drawMessageBlock(g, MAX_WIDTH, MIN_HEIGHT);
-		renderName(g, msgName);
-		renderText(g, msgText);
-		renderTime(g, new Date().getTime(), MAX_WIDTH, MIN_HEIGHT);
-		ImageIO.write(img, "png", new File("C:/Users/Krows/Desktop/tmp.png"));
-		Desktop.getDesktop().open(new File("C:/Users/Krows/Desktop/tmp.png"));
-		Toolkit.getDefaultToolkit().getSystemClipboard().setContents(new TransferableImage(img), null);
-	}
-	
-	public void initGraphics(Graphics2D g) {
+	private void initGraphics(BufferedImage img) {
+		g = img.createGraphics();
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 		g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 		g.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY);
@@ -219,21 +146,22 @@ public class StickerRenderer {
 		g.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY);
 		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
 		g.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
+		g.setFont(TEXT_FONT);
 	}
 	
-	public void fillTransparent(Graphics2D g, int width, int height) {
+	private void fillTransparent(Graphics2D g, int width, int height) {
 		g.setColor(new Color(0, true));
 		g.fillRect(0, 0, width, height);
 	}
 	
-	public void drawAvatar(BufferedImage avatar, Graphics2D g, int height) {
+	private void drawAvatar(BufferedImage avatar, Graphics2D g, int height) {
 		float diameter = AVATAR_DIAMETER;
 		Ellipse2D.Float clip = new Ellipse2D.Float(0, height - diameter, diameter, diameter);
-		g.setPaint(new TexturePaint(resize(avatar, AVATAR_DIAMETER, AVATAR_DIAMETER), new Rectangle(0, height - AVATAR_DIAMETER, AVATAR_DIAMETER, AVATAR_DIAMETER)));
+		g.setPaint(new TexturePaint(resizeImage(avatar, AVATAR_DIAMETER, AVATAR_DIAMETER), new Rectangle(0, height - AVATAR_DIAMETER, AVATAR_DIAMETER, AVATAR_DIAMETER)));
 		g.fill(clip);
 	}
 	
-	public void drawMessageBlock(Graphics2D g, int width, int height) {
+	private void drawMessageBlock(Graphics2D g, int width, int height) {
 		g.setColor(new Color(BACKGROUND_COLOR));
 		g.fillRoundRect((int) MESSAGE_BLOCK_X, 0, width - (int) MESSAGE_BLOCK_X, height, (int) MESSAGE_BLOCK_ROUND_RADIUS, (int) MESSAGE_BLOCK_ROUND_RADIUS);
 		float diameter = MESSAGE_BLOCK_BEGIN_RADIUS * 2;
@@ -243,11 +171,35 @@ public class StickerRenderer {
 		g.fill(area);
 	}
 	
-	public void renderName(Graphics2D g, String name) {
-		renderText(g, name, MESSAGE_TEXT_X, MESSAGE_NAME_BASELINE, color, NAME_FONT);
+	private void renderName(Graphics2D g, String name) {
+		renderText(g, name, MESSAGE_TEXT_X, MESSAGE_NAME_BASELINE, data.color, NAME_FONT);
 	}
 	
-	public static BufferedImage resize(BufferedImage img, int newW, int newH) { 
+	private void renderTime(Graphics2D g, long timestamp, int width, int height) {
+		String time = new SimpleDateFormat("H:mm").format(new Date(timestamp));
+		int w = width - TIME_X;
+		if(timeMore10) w -= TIME_10_OFFSET;
+		int h = height - TIME_BASELINE;
+		renderText(g, time, w, h, new Color(TIME_COLOR));
+	}
+	
+	public static int getXHeight(Graphics2D g) {
+		FontRenderContext frc = g.getFontRenderContext();
+		GlyphVector gv = g.getFont().createGlyphVector(frc, "x");
+		return gv.getPixelBounds(null, 0, 0).height;
+	}
+	
+	private void renderText(Graphics2D g, String text, float x, float y, Color color) {
+		renderText(g, text, x, y, color, TEXT_FONT);
+	}
+	
+	private void renderText(Graphics2D g, String text, float x, float y, Color color, Font font) {
+		g.setColor(color);
+		g.setFont(font);
+		g.drawString(text, x, y);
+	}
+	
+	public static BufferedImage resizeImage(BufferedImage img, int newW, int newH) { 
 	    Image tmp = img.getScaledInstance(newW, newH, Image.SCALE_SMOOTH);
 	    BufferedImage dimg = new BufferedImage(newW, newH, BufferedImage.TYPE_INT_ARGB);
 
@@ -258,93 +210,19 @@ public class StickerRenderer {
 	    return dimg;
 	}
 	
-	public void renderTime(Graphics2D g, long timestamp, int width, int height) {
-		String time = new SimpleDateFormat("H:mm").format(new Date(timestamp));
-		int w = width - TIME_X;
-		if(timeMore10) w -= TIME_10_OFFSET;
-		int h = height - TIME_BASELINE;
-		renderText(g, time, w, h, new Color(TIME_COLOR));
+	public static int getScreenResolution() {
+		return GraphicsEnvironment.isHeadless() ? DEFAULT_SCREEN_RESOLUTION : Toolkit.getDefaultToolkit().getScreenResolution();
 	}
 	
-	public void renderText(Graphics2D g, String text, float x, float y, Color color) {
-		renderText(g, text, x, y, color, TEXT_FONT);
-	}
-	
-	public void renderText(Graphics2D g, String text, float x, float y, Color color, Font font) {
-		g.setColor(color);
-		g.setFont(font);
-		g.drawString(text, x, y);
-	}
-	
-	public void renderText(Graphics2D g, String text) {
-		g.setColor(new Color(0xEBEBEB));
-		g.setFont(TEXT_FONT);
-		renderText(g, text, MAX_WIDTH, MIN_HEIGHT);
-	}
-	
-	public void renderText(Graphics2D g, String text, int width, int height) {
-        AttributedString a = new AttributedString(text);
-        a.addAttribute(TextAttribute.FONT, TEXT_FONT);
-        AttributedCharacterIterator paragraph = a.getIterator();
-        int paragraphStart = paragraph.getBeginIndex();
-        int paragraphEnd = paragraph.getEndIndex();
-        FontRenderContext frc = g.getFontRenderContext();
-        LineBreakMeasurer lineMeasurer = new LineBreakMeasurer(paragraph, frc);
-        
-        float breakWidth = width - MESSAGE_TEXT_X - MAX_TEXT_GAP;
-        float y = MESSAGE_TEXT_BASELINE;
-        lineMeasurer.setPosition(paragraphStart);
-        
-        while (lineMeasurer.getPosition() < paragraphEnd) {
-            TextLayout layout = lineMeasurer.nextLayout(breakWidth);
-            layout.draw(g, MESSAGE_TEXT_X, y);
-            y += layout.getAscent();
-            y += layout.getDescent() + layout.getLeading();
-        }
-	}
-	
-	public String getURLById(String id) {
-		GetFile request = new GetFile(id);
-		GetFileResponse response = bot.execute(request);
-		return bot.getFullFilePath(response.file());
-	}
-	
-	public UserProfilePhotos getProfilePhoto(long id) {
-		return bot.execute(new GetUserProfilePhotos(id)).photos();
-	}
-	
-	public float getHeight(Graphics2D g, String text, int width) {
-		AttributedString a = new AttributedString(text);
-        a.addAttribute(TextAttribute.FONT, TEXT_FONT);
-        AttributedCharacterIterator paragraph = a.getIterator();
-        int paragraphStart = paragraph.getBeginIndex();
-        int paragraphEnd = paragraph.getEndIndex();
-        FontRenderContext frc = g.getFontRenderContext();
-        LineBreakMeasurer lineMeasurer = new LineBreakMeasurer(paragraph, frc);
-        
-        float breakWidth = width - MESSAGE_TEXT_X - MAX_TEXT_GAP;
-        lineMeasurer.setPosition(paragraphStart);
-		TextLayout layout = null;
-		float r = 0;
-		while (lineMeasurer.getPosition() < paragraphEnd) {
-            layout = lineMeasurer.nextLayout(breakWidth);
-            r += layout.getAscent() + layout.getDescent() + layout.getLeading();
-            lineCount++;
-        }
-		lastLineWidth = (int) layout.getBounds().getWidth();
-		if (TIME_X + MAX_TEXT_TIME_GAP + lastLineWidth > width - MESSAGE_TEXT_X - (timeMore10 ? TIME_10_OFFSET : 0)) timeAdjust = false;
-		return r;
-	}
-	
-	private float fitSize(float pt) {
+//	TODO WTH is 72pt ?
+	private static float fitSize(float pt) {
 		return pt / (72.0F / SCREEN_RESOLUTION);
 	}
 	
-	public BufferedImage renderDefaultProfilePicture(String firstName, String lastName) {
-		String r = "" + Character.toUpperCase(firstName.charAt(0)) + (lastName == null ? "" : Character.toUpperCase(lastName.charAt(0)));
+	private BufferedImage renderDefaultProfilePicture(String r) {
 		BufferedImage img = new BufferedImage(AVATAR_DIAMETER, AVATAR_DIAMETER, BufferedImage.TYPE_INT_ARGB);
 		Graphics2D g = img.createGraphics();
-		g.setColor(color);
+		g.setColor(data.color);
 		g.fillRect(0, 0, AVATAR_DIAMETER, AVATAR_DIAMETER);
 		g.setColor(Color.WHITE);
 		g.setFont(TEXT_FONT.deriveFont(fitSize(FONT_PROFILE_SIZE)));
@@ -352,12 +230,4 @@ public class StickerRenderer {
 		g.drawString(r, (AVATAR_DIAMETER - x) / 2, img.getHeight() - PROFILE_LETTERS_BASELINE);
 		return img;
 	}
-	
-	public static void main(String[] args) throws MalformedURLException, IOException {
-		DEBUG = true;
-		new StickerRenderer(null).renderMessage(null);
-	}
 }
-
-// TODO Fix Default Avatar Render
-// TODO Render Emojis

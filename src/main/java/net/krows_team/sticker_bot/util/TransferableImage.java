@@ -1,4 +1,4 @@
-package net.krows_team.sticker_bot;
+package net.krows_team.sticker_bot.util;
 
 import java.awt.Image;
 import java.awt.datatransfer.DataFlavor;

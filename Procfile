@@ -1,1 +1,1 @@
-web: java $JAVA_OPTS -Dserver.port=$PORT -Dfile.encoding=UTF-8 -cp target/classes:target/dependency/* net.krows_team.sticker_bot.StickerBot
+web: java $JAVA_OPTS -Dserver.port=$PORT -Dfile.encoding=UTF-8 --add-opens=java.base/java.lang.reflect=ALL-UNNAMED -cp target/classes:target/dependency/* net.krows_team.sticker_bot.StickerBot

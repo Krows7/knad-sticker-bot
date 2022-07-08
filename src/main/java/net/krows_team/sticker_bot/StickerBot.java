@@ -1,24 +1,18 @@
 package net.krows_team.sticker_bot;
 
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
-import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -43,66 +37,63 @@ import com.pengrad.telegrambot.request.SendPhoto;
 import com.pengrad.telegrambot.request.SendSticker;
 import com.pengrad.telegrambot.response.BaseResponse;
 import com.pengrad.telegrambot.response.GetStickerSetResponse;
-import com.sun.net.httpserver.HttpServer;
+
+import net.krows_team.sticker_bot.util.Utils;
 
 public class StickerBot {
 	
-	public static final Logger LOGGER = LoggerFactory.getLogger(StickerBot.class);
+	private static final Logger LOGGER = LoggerFactory.getLogger(StickerBot.class);
+	
+	private static final Predicate<String> WORD_PATTERN = Pattern.compile("\\b(\\w*(Д|д)(А|а|a)+\\w*)\\b").asPredicate();
+	
+	private static final long STICKER_USER_ID = getStickerUserId();
+	private static final long TEST_CHAT_ID = getTestChatId();
+	
+	private static final String KIRKOROV_FILE_NAME = "kirkorov.jpg";
+	private static final String BOT_PREFIX = "knad_sticker";
+	private static final String BOT_NICKNAME = BOT_PREFIX + "_bot";
+	private static final String STICKER_SET_NAME = BOT_PREFIX + "_pack_by_" + BOT_NICKNAME;
+	private static final String STICKER_SET_TITLE = "КНАД Стартер Пак";
+	private static final String STICKER_COMMAND = "sticker";
+	private static final String HELP_COMMAND = "help";
+	private static final String HALT_COMMAND = "halt";
+	private static final String RESUME_COMMAND = "resume";
+	private static final String STOP_COMMAND = "stop";
+	private static final String BOT_COMMAND_PREFIX = "/";
+	private static final String PROPERTIES_PATH = Utils.getResourcePath("bot.properties");
+	
+	private HTTPWebServer webServer;
 	
 	private TelegramBot bot;
 	
 	private Properties properties;
 	
-	public static boolean LOCAL = false;
+	private String token;
 	
-	public static final Predicate<String> WORD_PATTERN = Pattern.compile("\\b(\\w*(Д|д)(А|а)\\w*)\\b").asPredicate();
-	
-	public static final long KROWS_ID = 455071255;
-	public static final long BOT_ID = 5499360401L;
-	public static final long CHAT_ID = -1001594184195L;
-	
-	public static final String BOT_NICKNAME = "knad_sticker_bot";
-	public static final String STICKER_SET_NAME = "knad_sticker_pack_by_" + BOT_NICKNAME;
-	public static final String STICKER_SET_TITLE = "КНАД Стартер Пак";
-	public static final String BOT_COMMAND = "sticker";
-	public static final String BOT_PREFIX = "/";
-	public static final String PROPERTIES_PATH = "src/main/resources/bot.properties";
+	private boolean started = false;
+	private boolean isLocal = false;
+	private boolean isTesting = false;
 	
 	public static void main(String[] args) {
-		if(args.length > 0 && args[0].equals("local")) LOCAL = true;
-		StickerBot bot = new StickerBot();
+		StickerBot bot = new StickerBot(args);
 		bot.start(args);
 	}
 	
-	public StickerBot() {
-		if(!LOCAL) HerokuHacks();
+	public StickerBot(String[] args) {
+		isLocal = Utils.contains(args, "local");
+		isTesting = Utils.contains(args, "test");
+		if(!isLocal) applyHerokuHacks();
 		initProperties();
+		loadToken();
 	}
 	
-	private void HerokuHacks() {
-		try {
-			HttpServer server = HttpServer.create(new InetSocketAddress("0.0.0.0", Integer.valueOf(System.getenv("PORT"))), 0);
-			server.start();
-			Timer timer = new Timer("Server update");
-			TimerTask updateTask = new TimerTask() {
-				@Override
-				public void run() {
-					try {
-						URL url = new URL("https://knad-sticker-bot.herokuapp.com/");
-						HttpURLConnection con = (HttpURLConnection) url.openConnection();
-						BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-						in.close();
-				        con.disconnect();
-					} catch (IOException e) {
-						LOGGER.error("Ok: ", e);
-					}
-				}
-			};
-//			TODO Fix
-			timer.scheduleAtFixedRate(updateTask, 1000L, 1000L * 60 * 25);
-		} catch (NumberFormatException | IOException e) {
-			e.printStackTrace();
-		}
+	private void loadToken() {
+		token = Optional.ofNullable(System.getenv("bot_token")).orElseThrow(() -> new NullPointerException("Telegram bot token is null"));
+	}
+	
+	private void applyHerokuHacks() {
+		webServer = new HTTPWebServer();
+		webServer.start();
 	}
 	
 	public void initProperties() {
@@ -111,7 +102,7 @@ public class StickerBot {
 			propFile.createNewFile();
 			properties = new Properties();
 			properties.load(new FileInputStream(propFile));
-//			checkParameters();
+			checkParameters();
 		} catch (Exception e) {
 			LOGGER.error("An error occured while reading properties", e);
 		}
@@ -119,54 +110,65 @@ public class StickerBot {
 	
 	public void checkParameters() throws Exception {
 		List<String> missingParams = new ArrayList<>();
-		if(!properties.contains("token")) missingParams.add("token");
 		if(!missingParams.isEmpty()) throw new Exception("Missing the following parameters in .properties file: " + missingParams.toString());
 	}
 	
 	public void start(String[] args) {
-		try {
-			bot = new TelegramBot(LOCAL ? args[1] : System.getenv("bot_token"));
-			bot.setUpdatesListener(upd -> {
+		bot = new TelegramBot(token);
+		bot.setUpdatesListener(upd -> {
+			try {
 				for (Update u : upd) {
-					if (u.message() == null || u.message().text() == null) continue;
+//					TODO Make it better
+					if(u.message() == null || u.message().text() == null) continue;
 					Message msg = u.message();
+					if(isTesting && msg.chat().id() != TEST_CHAT_ID) continue;
 					String[] msgArr = msg.text().split(" ");
-					if(checkForCommand(msgArr[0], BOT_COMMAND)) handleSticker(msg, msgArr);
-					else if(checkForCommand(msgArr[0], "help")) handleHelp(msg);
-					else if(checkForCommand(msgArr[0], "halt")) handleHalt();
-					else if(WORD_PATTERN.test(msg.text())) {
-						bot.execute(new SendPhoto(msg.chat().id(), read("src/main/resources/kirkorov.jpg")).replyToMessageId(msg.messageId()));
+					if(checkForCommand(msgArr[0], STICKER_COMMAND)) handleSticker(msg, msgArr);
+					else if(checkForCommand(msgArr[0], HELP_COMMAND)) handleHelp(msg);
+					else if(checkForCommand(msgArr[0], HALT_COMMAND)) handleHalt();
+					else if(checkForCommand0(msgArr[0], RESUME_COMMAND)) started = true;
+					else if(checkForCommand0(msgArr[0], STOP_COMMAND)) started = false;
+					else if(started && WORD_PATTERN.test(msg.text())) {
+						bot.execute(new SendPhoto(msg.chat().id(), Utils.readFile(Utils.getResourcePath(KIRKOROV_FILE_NAME))).replyToMessageId(msg.messageId()));
 					}
 				}
-				return UpdatesListener.CONFIRMED_UPDATES_ALL;
-			});
-		} catch(Exception e) {
-			bot.shutdown();
-		} finally {
-			start(args);
-		}
+			} catch(Exception e) {
+				LOGGER.error("Error occured to bot shutdown: ", e);
+				if(Utils.contains(args, "error-halt")) handleHalt();
+				else start(args);
+			}
+			return UpdatesListener.CONFIRMED_UPDATES_ALL;
+		});
 	}
 	
 	public boolean checkForCommand(String arg, String command) {
-		return arg.equals(BOT_PREFIX + command);
+		return started && checkForCommand0(arg, command);
+	}
+	
+//	TODO Refactor
+	public boolean checkForCommand0(String arg, String command) {
+		return arg.equals(BOT_COMMAND_PREFIX + command);
 	}
 	
 	public void handleHalt() {
+		if(!isLocal) webServer.stop();
+		bot.shutdown();
 		System.exit(666);
 	}
 	
 	public void handleSticker(Message msg, String[] args) {
+//		TODO Make it better
 		if(args.length == 1) sendError(msg.chat().id(), "Too few arguments");
 		else if(args.length > 3) sendError(msg.chat().id(), "Too much arguments");
 		else if(args[1].equals("add")) {
-			if (msg.replyToMessage() == null) sendError(msg.from().id(), "There's no reply message.");
+			if (msg.replyToMessage() == null) sendError(msg.from().id(), "There's no reply message");
 			else {
 				try {
 					byte[] out = renderSticker(msg);
 					GetStickerSetResponse stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
 					String emoji = args.length > 2 ? args[2] : "🤔";
-					if(stickerSet.stickerSet() == null) bot.execute(CreateNewStickerSet.pngSticker(KROWS_ID, STICKER_SET_NAME, STICKER_SET_TITLE, emoji, out));
-					else bot.execute(AddStickerToSet.pngSticker(KROWS_ID, STICKER_SET_NAME, emoji, out));
+					if(stickerSet.stickerSet() == null) bot.execute(CreateNewStickerSet.pngSticker(STICKER_USER_ID, STICKER_SET_NAME, STICKER_SET_TITLE, emoji, out));
+					else bot.execute(AddStickerToSet.pngSticker(STICKER_USER_ID, STICKER_SET_NAME, emoji, out));
 					stickerSet = bot.execute(new GetStickerSet(STICKER_SET_NAME));
 					Sticker[] stickerArr = stickerSet.stickerSet().stickers();
 					bot.execute(new SendSticker(msg.chat().id(), stickerArr[stickerArr.length - 1].fileId()));
@@ -175,7 +177,7 @@ public class StickerBot {
 				}
 			}
 		} else if(args[1].equals("preview")) {
-			if (msg.replyToMessage() == null) sendError(msg.from().id(), "There's no reply message.");
+			if (msg.replyToMessage() == null) sendError(msg.from().id(), "There's no reply message");
 			else {
 				try {
 					bot.execute(new SendSticker(msg.chat().id(), renderSticker(msg)));
@@ -195,18 +197,17 @@ public class StickerBot {
 		} else sendError(msg.chat().id(), "Unknown Command: " + args[1]);
 	}
 	
-	private byte[] read(String path) {
-		try {
-			return Files.readAllBytes(new File(path).toPath());
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		return null;
+	private static long getStickerUserId() {
+		return Long.valueOf(System.getenv("sticker_user_id"));
+	}
+	
+	private static long getTestChatId() {
+		return Long.valueOf(System.getenv("test_chat_id"));
 	}
 	
 	public void handleHelp(Message msg) {
 		try {
-			Path path = new File("src/main/resources/help.md").toPath();
+			Path path = new File(Utils.getResourcePath("help.md")).toPath();
 			String s = Files.lines(path, StandardCharsets.UTF_8).collect(Collectors.joining(System.lineSeparator()));
 			SendMessage send = new SendMessage(msg.chat().id(), s);
 			send.parseMode(ParseMode.Markdown);
@@ -216,13 +217,8 @@ public class StickerBot {
 		}
 	}
 	
-	public boolean contains(String[] a, String match) {
-		for (String s : a) if(s.toLowerCase().equals(match)) return true;
-		return false;
-	}
-	
 	private byte[] renderSticker(Message msg) throws MalformedURLException, IOException {
-		BufferedImage img = new StickerRenderer(bot).renderMessage(msg.replyToMessage());
+		BufferedImage img = new StickerRenderer(new StickerData(msg.replyToMessage(), bot)).renderMessage();
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		ImageIO.write(img, "png", out);
 		return out.toByteArray();
