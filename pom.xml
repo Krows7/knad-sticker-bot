@@ -26,9 +26,6 @@
 	    <version>1.7.36</version>
 	</dependency>
   </dependencies>
-  <properties>
-  	<jvm.options>--add-opens=java.base/java.lang.reflect=ALL-UNNAMED</jvm.options>
-  </properties>
   <build>
   	<plugins>
   		<plugin>
@@ -36,9 +33,6 @@
 		    <artifactId>maven-compiler-plugin</artifactId>
 		    <version>3.8.0</version>
 		    <configuration>
-		    	<compilerArgs>
-		    		<compilerArg>${jvm.options}</compilerArg>
-		    	</compilerArgs>
 	       		<source>1.8</source>
 		        <target>1.8</target>
 		        <verbose>true</verbose>
