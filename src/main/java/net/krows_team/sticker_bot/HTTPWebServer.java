@@ -38,11 +38,13 @@ public class HTTPWebServer {
 		TimerTask updateTask = new TimerTask() {
 			@Override
 			public void run() {
-				ExceptionHandler.create(() -> ((HttpURLConnection) new URL(SERVER_URL).openConnection()).disconnect(),
-						e -> LOGGER.error("Error occured while handling connection to web server: ", e)).run();
+				ExceptionHandler
+						.create(() -> ((HttpURLConnection) new URL(SERVER_URL).openConnection()).getResponseCode(),
+								e -> LOGGER.error("Error occured while handling connection to web server: ", e))
+						.run();
 			}
 		};
-		timer.scheduleAtFixedRate(updateTask, 1000L, UPDATE_TICK);
+		timer.scheduleAtFixedRate(updateTask, 0, UPDATE_TICK);
 	}
 
 	public void stop() {
