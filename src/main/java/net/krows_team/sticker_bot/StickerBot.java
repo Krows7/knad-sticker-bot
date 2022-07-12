@@ -46,9 +46,13 @@ public class StickerBot {
 
 	private static final Predicate<String> WORD_PATTERN = Pattern.compile("\\b(\\w*(Д|д)(А|а|a)+\\w*)\\b")
 			.asPredicate();
+	private static final Predicate<String> ANSWER_PATTERN = Pattern
+			.compile("\\b(\\w*((х|x)(у|y)й н(а|a))\\w*)\\b", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE)
+			.asPredicate();
 
 	private static final long STICKER_USER_ID = getStickerUserId();
 	private static final long TEST_CHAT_ID = getTestChatId();
+	private static final String YES_STICKER_ID = getYesStickerId();
 
 	private static final String KIRKOROV_FILE_NAME = "kirkorov.jpg";
 	private static final String BOT_PREFIX = "knad_sticker";
@@ -61,6 +65,7 @@ public class StickerBot {
 	private static final String RESUME_COMMAND = "resume";
 	private static final String STOP_COMMAND = "stop";
 	private static final String BOT_COMMAND_PREFIX = "/";
+	private static final String ANSWER = "Держи два";
 	private static final String PROPERTIES_PATH = Utils.getResourcePath("bot.properties");
 
 	private HTTPWebServer webServer;
@@ -123,26 +128,32 @@ public class StickerBot {
 			try {
 				for (Update u : upd) {
 //					TODO Make it better
-					if (u.message() == null || u.message().text() == null)
-						continue;
 					Message msg = u.message();
+					if (msg == null)
+						continue;
 					if (isTesting && msg.chat().id() != TEST_CHAT_ID)
+						continue;
+					if (started && msg.sticker() != null) {
+						handleStickerMessage(msg);
+						continue;
+					}
+					if (msg.text() == null)
 						continue;
 					String[] msgArr = msg.text().split(" ");
 					if (isCommandAvailable(msgArr[0], STICKER_COMMAND))
-						handleSticker(msg, msgArr);
+						handleStickerCommand(msg, msgArr);
 					else if (isCommandAvailable(msgArr[0], HELP_COMMAND))
 						handleHelp(msg);
 					else if (isCommandAvailable(msgArr[0], HALT_COMMAND))
-						handleHalt();
+						handleExit(0);
 					else if (checkForCommand(msgArr[0], RESUME_COMMAND))
 						started = true;
 					else if (checkForCommand(msgArr[0], STOP_COMMAND))
 						started = false;
 					else if (started && WORD_PATTERN.test(msg.text())) {
-						bot.execute(new SendPhoto(msg.chat().id(),
-								Utils.readFile(Utils.getResourcePath(KIRKOROV_FILE_NAME)))
-										.replyToMessageId(msg.messageId()));
+						sendKirkorov(msg);
+					} else if (started && ANSWER_PATTERN.test(msg.text())) {
+						sendMessage(new SendMessage(msg.chat().id(), ANSWER).replyToMessageId(msg.messageId()));
 					}
 				}
 			} catch (Exception e) {
@@ -164,14 +175,29 @@ public class StickerBot {
 		return arg.equals(BOT_COMMAND_PREFIX + command);
 	}
 
-	public void handleHalt() {
+	public void handleExit(int code) {
 		if (!isLocal)
 			webServer.stop();
 		bot.shutdown();
-		System.exit(666);
+		System.exit(code);
 	}
 
-	public void handleSticker(Message msg, String[] args) {
+	public void handleHalt() {
+		handleExit(666);
+	}
+
+	public void sendKirkorov(Message msg) throws IOException {
+		bot.execute(new SendPhoto(msg.chat().id(), Utils.readFile(Utils.getResourcePath(KIRKOROV_FILE_NAME)))
+				.replyToMessageId(msg.messageId()));
+	}
+
+	public void handleStickerMessage(Message msg) throws IOException {
+		if (msg.sticker().fileUniqueId().equals(YES_STICKER_ID)) {
+			sendKirkorov(msg);
+		}
+	}
+
+	public void handleStickerCommand(Message msg, String[] args) {
 //		TODO Make it better
 		if (args.length == 1)
 			sendError(msg.chat().id(), "Too few arguments");
@@ -229,6 +255,10 @@ public class StickerBot {
 
 	private static long getTestChatId() {
 		return Long.valueOf(System.getenv("test_chat_id"));
+	}
+
+	private static String getYesStickerId() {
+		return System.getenv("yes_sticker_id");
 	}
 
 	public void handleHelp(Message msg) {
